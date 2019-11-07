@@ -18,7 +18,7 @@
 
 
 // app.get('/location', (request, response) => {
-  // send the users current location back to them
+// send the users current location back to them
 //   const geoData = require('./data/geo.json');
 //   const city = request.query.data;
 //   const cityName = geoData.results[0].address_components[0].long_name;
@@ -45,11 +45,15 @@ require('dotenv').config();
 const express = require('express');
 const superagent = require('superagent');
 const cors = require('cors');
+const pg = require('pg');
 
 // Application Setup
 const PORT = process.env.PORT || 3000;
 const app = express();
 app.use(cors());
+
+const client = new pg.Client(process.env.DATABASE_URL);
+client.on('err', err => { throw err; });
 
 let locations = {};
 
@@ -57,6 +61,7 @@ let locations = {};
 app.get('/location', locationHandler);
 app.get('/weather', weatherHandler);
 // app.get('/event', eventHandler);
+// app.get('/add', addHandler);
 app.get('/trails', trailsHandler);
 app.use('*', notFoundHandler);
 app.use(errorHandler);
@@ -74,6 +79,16 @@ function locationHandler(request, response) {
         const geoData = data.body;
         const location = new Location(request.query.data, geoData);
         locations[url] = location;
+        let latitude = location.latitude;
+        let longitude = location.longitude;
+        let SQL = `INSERT INTO location (latitude, longitude ) VALUES ($1, $2) RETURNING *`;
+        let safeValues = [ latitude, longitude];
+        client.query(SQL, safeValues)
+          .then(results => {
+            response.status(200).json(results);
+            console.log(`added new localion ${results}`);
+          })
+          .catch(err => console.error(err));
         // console.log(data.body);
         response.send(location);
       })
@@ -155,7 +170,7 @@ function trailsHandler(request, response) {
   const url = `https://www.hikingproject.com/data/get-trails?lat=${request.query.data.latitude}&lon=${request.query.data.longitude}&maxDistance=10&key=${process.env.TRAIL_API_KEY}`;
   superagent.get(url)
     .then(data => {
-      console.log(data.body.trails);
+      // console.log(data.body.trails);
       const trailsData = data.body.trails.map(trail => {
         return new Trail(trail);
       });
@@ -177,8 +192,20 @@ function Trail(trails) {
   this.trail_url = trails.url;
   this.conditions = trails.conditionStatus;
   this.condition_date = trails.conditionDate;
-  // this.condition_time = trails. 
+  // this.condition_time = trails.
 }
+
+app.get('/get', (request, response) =>{
+  let SQL = `SELECT * FROM location`;
+  client.query(SQL)
+    .then(results => {
+      response.status(200).json(results.rows);
+      console.log(results.rows);
+    })
+    .catch(err => console.err(err));
+})
+
+
 
 function notFoundHandler(request, response) {
   response.status(404).send('huh?');
@@ -188,7 +215,12 @@ function errorHandler(error, request, response) {
   response.status(500).send(error);
 }
 
-
-app.listen(PORT, () => {
-  console.log(`listening on PORT ${PORT}`);
-});
+client.connect()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`listening on ${PORT}`);
+    })
+  })
+  .catch(err => {
+    throw `PG startup error ${err.message}`;
+  })
