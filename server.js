@@ -129,12 +129,23 @@ function Trail(trails) {
   // this.condition_time = trails.
 }
 
-app.get('/get', (request, response) =>{
-  let SQL = `SELECT * FROM location WHERE location_name = ${location.formatted_query}`;
-  client.query(SQL)
+app.get('/get', (request, response) => {
+  let value = [location.formatted_query];
+  let SQL = `SELECT * FROM location WHERE location_name = $1`;
+  client.query(SQL, value)
     .then(results => {
-      response.status(200).json(results.rows);
-      console.log(results.rows);
+      if (results.rowCount) {
+        response.status(200).json(results.rows);
+        // console.log(results.rows); 
+      } else {
+        //go to google
+        // let url = `https://maps.googleapis.com/maps/api/geocode/json?address=${request.query.data}&key=${process.env.GEOCODE_API_KEY}`;
+        // superagent.get(url);
+        // .then(data => {
+        //   let location = new Location(data.body);
+        // })
+      }
+    
     })
     .catch(err => console.err(err));
 })
